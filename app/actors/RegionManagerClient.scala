@@ -29,6 +29,6 @@ class RegionManagerClient extends Actor {
       val regionId = settings.GeoFunctions.regionForPoint(p.position)
       // And send the update to the that region
       regionManagerRouter ! UpdateUserPosition(regionId, p)
-//      Actors.userMetaData ! p
+      Actors.userMetaData ! p
   }
 }

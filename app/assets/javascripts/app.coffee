@@ -10,6 +10,7 @@ require.config {
     marker: "./models/marker"
     markerRenderer: "./models/markerRenderer"
     storage: "./models/storage"
+    userInfo: "./models/userInfo"
     md5: "./md5.min"
   }
   map: {

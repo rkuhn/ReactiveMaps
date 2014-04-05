@@ -1,7 +1,7 @@
 #
 # A marker class
 #
-define ["leaflet", "markerRenderer"], (Leaflet, renderer) ->
+define ["leaflet", "markerRenderer", "userInfo"], (Leaflet, renderer, userInfo) ->
 
   class Marker
     constructor: (map, feature, latLng) ->
@@ -20,8 +20,16 @@ define ["leaflet", "markerRenderer"], (Leaflet, renderer) ->
           title: feature.id
         )
 
-      # The popup should contain the gravatar of the user and their id
-      @marker.bindPopup(renderer.renderPopup(userId))
+        # The popup should contain the gravatar of the user and their id
+        @marker.bindPopup(renderer.renderPopup(userId))
+        @marker.on "click",  =>
+            userInfo.get(userId)
+                .done (user) =>
+                    @marker.getPopup()
+                        .setContent(renderer.renderPopup(userId, user.distance)).update()
+                .fail =>
+                    @marker.getPopup()
+                        .setContent(renderer.renderPopup(userId, -1)).update()
 
       @lastSeen = new Date().getTime()
       @marker.addTo(map)

@@ -30,7 +30,8 @@ object UserMetaData {
    * A limited-depth commutative replicated data type for storing the position
    * history of a user.
    */
-  class PositionHistory private (private val history: TreeSet[UserPosition], initialDistance: Double) {
+  @SerialVersionUID(1L)
+  class PositionHistory private (private val history: TreeSet[UserPosition], initialDistance: Double) extends Serializable {
     import GeoFunctions._
     import userPositionOrder.mkOrderingOps
 

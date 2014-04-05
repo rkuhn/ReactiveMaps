@@ -7,6 +7,7 @@ import models.backend.UserPosition
 import akka.pattern.{ ask, pipe }
 import akka.util.Timeout
 import scala.concurrent.duration._
+import akka.pattern.CircuitBreaker
 
 object UserMetaDataService {
   case class GetUser(id: String)
@@ -21,10 +22,12 @@ class UserMetaDataService extends Actor {
   import context.dispatcher
   implicit val timeout = Timeout(2.seconds)
   val router = context.actorOf(Props.empty.withRouter(FromConfig), "router")
+  
+  val cb = CircuitBreaker(context.system.scheduler, 3, 1.second, 30.seconds)
 
   def receive = {
     case p: UserPosition ⇒ router ! p
-    case g: GetUser      ⇒ router ? g pipeTo sender
+    case g: GetUser      ⇒ cb.withCircuitBreaker(router ? g) pipeTo sender
   }
 
 }
