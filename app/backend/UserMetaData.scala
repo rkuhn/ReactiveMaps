@@ -88,7 +88,7 @@ class UserMetaData extends Actor with ActorLogging {
     case GetUser(id) ⇒
       users get id match {
         case Some(history) ⇒ sender ! User(id, history.latestDistance)
-        case None          ⇒ sender ! User(id, Double.NaN)
+        case None          ⇒ // nothing to send
       }
     case p: UserPosition ⇒
       val newHistory = users get p.id match {
