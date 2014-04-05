@@ -16,7 +16,9 @@ object RegionManagerClient {
  * regionManager on the right backend node.
  */
 class RegionManagerClient extends Actor {
-
+  
+  import play.api.Play.current
+  
   val regionManagerRouter = context.actorOf(Props.empty.withRouter(FromConfig), "router")
 
   val settings = Settings(context.system)
@@ -27,5 +29,6 @@ class RegionManagerClient extends Actor {
       val regionId = settings.GeoFunctions.regionForPoint(p.position)
       // And send the update to the that region
       regionManagerRouter ! UpdateUserPosition(regionId, p)
+//      Actors.userMetaData ! p
   }
 }

@@ -20,8 +20,8 @@ define ["leaflet", "markerRenderer"], (Leaflet, renderer) ->
           title: feature.id
         )
 
-        # The popup should contain the gravatar of the user and their id
-        @marker.bindPopup(renderer.renderPopup(userId))
+      # The popup should contain the gravatar of the user and their id
+      @marker.bindPopup(renderer.renderPopup(userId))
 
       @lastSeen = new Date().getTime()
       @marker.addTo(map)
