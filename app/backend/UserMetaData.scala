@@ -1,7 +1,6 @@
 package backend
 
 import scala.collection.immutable.TreeSet
-
 import GeoFunctions.distanceBetweenPoints
 import actors.UserMetaDataService.{ GetUser, User }
 import akka.actor.{ Actor, ActorLogging }
@@ -11,6 +10,11 @@ import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{ CurrentClusterState, MemberUp }
 import akka.cluster.Member
 import models.backend.UserPosition
+import scala.concurrent.duration._
+import akka.actor.Address
+import akka.actor.ActorSelection
+import scala.collection.immutable.TreeMap
+import play.extras.geojson.LatLng
 
 object UserMetaData {
   val clusterRole = "meta-data"
@@ -21,8 +25,11 @@ object UserMetaData {
    */
   type Users = Map[String, PositionHistory]
 
-  private case object GetSnapshot
-  private case class Snapshot(users: Users)
+  private case class UserData(id: String, timestamp: Long, distance: Double)
+
+  private case class Snapshot(current: Vector[UserData])
+  private case class GetDetails(ids: Set[String])
+  private case class Details(users: Users)
 
   val props = Props[UserMetaData]
 
@@ -31,45 +38,44 @@ object UserMetaData {
    * history of a user.
    */
   @SerialVersionUID(1L)
-  class PositionHistory private (private val history: TreeSet[UserPosition], initialDistance: Double) extends Serializable {
+  class PositionHistory private (private val history: TreeMap[Long, LatLng], initialDistance: Double) extends Serializable {
     import GeoFunctions._
-    import userPositionOrder.mkOrderingOps
 
-    private val aggregateDistance: ((Double, UserPosition), UserPosition) ⇒ (Double, UserPosition) = {
-      case ((d, oldPos), newPos) ⇒ (d + distanceBetweenPoints(oldPos.position, newPos.position)) -> newPos
+    private def calcDistance(h: TreeMap[Long, LatLng], init: Double): Double = {
+      h.iterator.drop(1).foldLeft((init, h.head._2)) {
+        case ((d, oldPos), (_, newPos)) ⇒ (d + distanceBetweenPoints(oldPos, newPos)) -> newPos
+      }._1
     }
 
-    lazy val (latestDistance, _) = history.iterator.drop(1).foldLeft((initialDistance, history.head))(aggregateDistance)
+    lazy val latestDistance = calcDistance(history, initialDistance)
+    def latestTimestamp = history.last._1
+
+    def isMissing(data: UserData): Boolean =
+      (!history.contains(data.timestamp) ||
+        calcDistance(history.to(data.timestamp), initialDistance) != data.distance)
 
     def merge(position: UserPosition): PositionHistory =
-      if (history contains position) this
-      else if (position < history.head) this
-      else {
-        val size = history.size
-        if (size > 999) {
-          val merged = history + position
-          val (d, _) = merged.iterator.drop(1).take(size - 999).foldLeft((initialDistance, history.head))(aggregateDistance)
-          new PositionHistory(merged.drop(size - 999), d)
-        } else new PositionHistory(history + position, initialDistance)
-      }
+      if (history contains position.timestamp) this
+      else if (position.timestamp < history.head._1) this
+      else compact(history + (position.timestamp -> position.position))
 
     def merge(other: PositionHistory): PositionHistory =
-      if (other.history.head < history.head) other.merge(this)
-      else {
-        val merged = history ++ other.history
-        val size = merged.size
-        if (size > 999) {
-          val (d, _) = merged.iterator.drop(1).take(size - 999).foldLeft((initialDistance, history.head))(aggregateDistance)
-          new PositionHistory(merged.drop(size - 999), d)
-        } else new PositionHistory(merged, initialDistance)
-      }
+      if (other.history.head._1 < history.head._1) other.merge(this)
+      else compact(history ++ other.history)
+
+    private def compact(merged: TreeMap[Long, LatLng]): PositionHistory = {
+      val size = merged.size
+      if (size > 999) {
+        val toRemove = size - 900
+        val d = calcDistance(merged.take(toRemove + 1), initialDistance)
+        new PositionHistory(merged.drop(toRemove), d)
+      } else new PositionHistory(merged, initialDistance)
+    }
   }
 
   object PositionHistory {
-    def apply(position: UserPosition): PositionHistory = new PositionHistory(TreeSet(position), 0d)
+    def apply(position: UserPosition): PositionHistory = new PositionHistory(TreeMap(position.timestamp -> position.position), 0d)
   }
-
-  implicit val userPositionOrder: Ordering[UserPosition] = Ordering.by(_.timestamp)
 }
 
 class UserMetaData extends Actor with ActorLogging {
@@ -81,6 +87,11 @@ class UserMetaData extends Actor with ActorLogging {
 
   val cluster = Cluster(context.system)
   cluster.subscribe(self, classOf[MemberUp])
+
+  import context.dispatcher
+  case object Tick
+  val tick = context.system.scheduler.schedule(5.seconds, 5.seconds, self, Tick)
+  var peers = Set.empty[ActorSelection]
 
   override def postStop(): Unit = cluster.unsubscribe(self)
 
@@ -96,22 +107,45 @@ class UserMetaData extends Actor with ActorLogging {
         case None          ⇒ PositionHistory(p)
       }
       users += p.id -> newHistory
-    case GetSnapshot ⇒
-      log.info("got snapshot request from {}", sender)
-      sender ! Snapshot(users)
+    case Tick ⇒
+      val snapshot = Snapshot(createSnapshot())
+      log.info("sending snapshot of size {} to {} peers", snapshot.current.size, peers.size)
+      peers foreach (_ ! snapshot)
     case Snapshot(snap) ⇒
       log.info("got snapshot from {} with size {}", sender, snap.size)
-      users = merge(snap, users)
-    case CurrentClusterState(members, _, _, _, _) ⇒ members foreach peerUp
-    case MemberUp(member)                         ⇒ peerUp(member)
+      val deficits = getDeficits(snap)
+      if (deficits.nonEmpty) {
+        log.info("sending request for {} details", deficits.size)
+        sender ! GetDetails(deficits)
+      }
+    case GetDetails(ids) ⇒
+      log.info("got request for {} details from {}", ids.size, sender)
+      sender ! Details(users.filter(u ⇒ ids.contains(u._1)))
+    case Details(details) ⇒
+      log.info("got {} details from {}", details.size, sender)
+      users = merge(users, details)
+    case CurrentClusterState(members, _, _, _, _) ⇒
+      members foreach peerUp
+    case MemberUp(member) ⇒
+      peerUp(member)
   }
+
+  private def createSnapshot(): Vector[UserData] = users.map {
+    case (id, history) ⇒ UserData(id, history.latestTimestamp, history.latestDistance)
+  }(collection.breakOut)
+
+  private def getDeficits(snap: Vector[UserData]): Set[String] = snap.flatMap(userData ⇒
+    users get userData.id match {
+      case Some(history) if !history.isMissing(userData) ⇒ None
+      case _ ⇒ Some(userData.id)
+    })(collection.breakOut)
 
   private def peerUp(member: Member): Unit =
     if (member.address != cluster.selfAddress && member.hasRole(clusterRole)) {
       val other = context.actorSelection(RootActorPath(member.address) / "user" / actorName)
       log.info("initial chat with {}", other)
-      other ! GetSnapshot
-      other ! Snapshot(users)
+      other ! Snapshot(createSnapshot())
+      peers += other
     }
 
   private def merge(left: Users, right: Users): Users =
