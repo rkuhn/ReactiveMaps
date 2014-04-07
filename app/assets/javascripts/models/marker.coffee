@@ -22,16 +22,14 @@ define ["leaflet", "markerRenderer", "userInfo"], (Leaflet, renderer, userInfo) 
 
         # The popup should contain the gravatar of the user and their id
         @marker.bindPopup(renderer.renderPopup(userId))
-        
-        # TODO: enable distance display once userInfo service is implemented
-        #@marker.on "click",  =>
-        #    userInfo.get(userId)
-        #        .done (user) =>
-        #            @marker.getPopup()
-        #                .setContent(renderer.renderPopup(userId, user.distance)).update()
-        #        .fail =>
-        #            @marker.getPopup()
-        #                .setContent(renderer.renderPopup(userId, -1)).update()
+        @marker.on "click",  =>
+            userInfo.get(userId)
+                .done (user) =>
+                    @marker.getPopup()
+                        .setContent(renderer.renderPopup(userId, user.distance)).update()
+                .fail =>
+                    @marker.getPopup()
+                        .setContent(renderer.renderPopup(userId, -1)).update()
 
       @lastSeen = new Date().getTime()
       @marker.addTo(map)

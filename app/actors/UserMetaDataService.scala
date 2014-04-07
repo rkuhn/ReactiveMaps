@@ -23,14 +23,11 @@ class UserMetaDataService extends Actor {
   implicit val timeout = Timeout(2.seconds)
   val router = context.actorOf(Props.empty.withRouter(FromConfig), "router")
   
-  /*
-   * TODO: use a CircuitBreaker to short-circuit GetUser requests while the
-   * backend is unavailable
-   */
-  
+  val cb = CircuitBreaker(context.system.scheduler, 3, 1.second, 30.seconds)
+
   def receive = {
-    case p: UserPosition ⇒ // TODO
-    case g: GetUser      ⇒ // TODO
+    case p: UserPosition ⇒ router ! p
+    case g: GetUser      ⇒ cb.withCircuitBreaker(router ? g) pipeTo sender
   }
 
 }

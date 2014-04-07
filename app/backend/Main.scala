@@ -26,6 +26,10 @@ object Main {
     if (myRoles.exists(r => r.startsWith("backend"))) {
       system.actorOf(RegionManager.props(), "regionManager")
     }
+    
+    if (myRoles.contains(UserMetaData.clusterRole)) {
+      system.actorOf(UserMetaData.props, UserMetaData.actorName)
+    }
 
     if (Settings(system).BotsEnabled && myRoles.contains("frontend")) {
       val regionManagerClient = system.actorOf(RegionManagerClient.props(), "regionManagerClient")

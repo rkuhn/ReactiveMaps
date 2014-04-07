@@ -18,11 +18,14 @@ object UserController extends Controller {
   implicit val timeout = Timeout(2.seconds)
   import play.api.Play.current
 
-  /*
-   * TODO: create get(id: String) method which asynchronously asks the
-   * userMetaData actor for the given user ID and returns the reply to the
-   * client as JSON (or NotFound for an AskTimeoutException or ServiceUnavailable
-   * for a CircuitBreakerOpenException).
-   */
+  def get(id: String) = Action.async {
+    (Actors.userMetaData ? GetUser(id))
+      .mapTo[User]
+      .map(user ⇒ Ok(Json.toJson(user)))
+      .recover {
+        case _: AskTimeoutException ⇒ NotFound
+        case _: CircuitBreakerOpenException => ServiceUnavailable
+      }
+  }
 
 }
