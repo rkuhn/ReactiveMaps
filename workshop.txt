@@ -1,0 +1,11 @@
+Steps to be done:
+
+- implement backend/UserMetaData actor
+- start UserMetaData actor in backend.Main
+- add UserMetaDataService to Actors.scala
+- hook into sending of updates (e.g. RegionManagerClient or where it is used)
+- implement actors/UserMetaDataService actor
+- define broadcast cluster-aware router for UserMetaData
+- check comment in marker.coffee
+- implement UserController.get
+- add route to UserController.get

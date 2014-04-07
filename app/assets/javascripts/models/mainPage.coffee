@@ -73,7 +73,9 @@ define ["knockout", "map", "gps", "mockGps"], (ko, Map, Gps, MockGps) ->
     # Disconnect the web socket
     disconnect: ->
       @closing = true
+      localStorage.removeItem("email")
       @ws.close()
+      location.reload()
 
     # Switch between the mock GPS and the real GPS
     toggleMockGps: ->

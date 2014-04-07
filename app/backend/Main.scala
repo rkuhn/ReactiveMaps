@@ -21,12 +21,13 @@ import akka.cluster.Cluster
 object Main {
   def main(args: Array[String]): Unit = {
     val system = ActorSystem("application")
+    val myRoles = Cluster(system).selfRoles
 
-    if (Cluster(system).selfRoles.exists(r => r.startsWith("backend"))) {
+    if (myRoles.exists(r => r.startsWith("backend"))) {
       system.actorOf(RegionManager.props(), "regionManager")
     }
 
-    if (Settings(system).BotsEnabled && Cluster(system).selfRoles.contains("frontend")) {
+    if (Settings(system).BotsEnabled && myRoles.contains("frontend")) {
       val regionManagerClient = system.actorOf(RegionManagerClient.props(), "regionManagerClient")
 
       def findUrls(id: Int): List[URL] = {

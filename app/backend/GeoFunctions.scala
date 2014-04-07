@@ -9,10 +9,85 @@ import models.backend.Cluster
 import models.backend.UserPosition
 import scala.annotation.tailrec
 
+object GeoFunctions {
+  
+  /**
+   * Find the segment that the point lies in in the given south/north range
+   *
+   * @return A number from 0 to n - 1
+   */
+  def latitudeSegment(n: Int, south: Double, north: Double, point: Double): Int = {
+    // Normalise so that the southern most point is 0
+    val range = north - south
+    val normalisedPoint = point - south
+    val segment = Math.floor(normalisedPoint * (n / range)).asInstanceOf[Int]
+    if (segment >= n || segment < 0) {
+      // The point was never in the given range.  Default to 0.
+      0
+    } else {
+      segment
+    }
+  }
+
+  /**
+   * Find the segment that the point lies in in the given west/east range
+   *
+   * @return A number from 0 to n - 1
+   */
+  def longitudeSegment(n: Int, west: Double, east: Double, point: Double): Int = {
+    // Normalise so that the western most point is 0, taking into account the 180 cut over
+    val range = modPositive(east - west, 360)
+    val normalisedPoint = modPositive(point - west, 360)
+    val segment = Math.floor(normalisedPoint * (n / range)).asInstanceOf[Int]
+    if (segment >= n || segment < 0) {
+      // The point was never in the given range.  Default to 0.
+      0
+    } else {
+      segment
+    }
+  }
+
+  /**
+   * Modulo function that always returns a positive number
+   */
+  def modPositive(x: Double, y: Int): Double = {
+    val mod = x % y
+    if (mod > 0) mod else mod + y
+  }
+
+  /**
+   * Modulo function that always returns a positive number
+   */
+  def modPositive(x: Int, y: Int): Int = {
+    val mod = x % y
+    if (mod > 0) mod else mod + y
+  }
+
+  def distanceBetweenPoints(pointA: LatLng, pointB: LatLng): Double = {
+    import Math._
+    // Setup the inputs to the formula
+    val R = 6371009d // average radius of the earth in metres
+    val dLat = toRadians(pointB.lat - pointA.lat)
+    val dLng = toRadians(pointB.lng - pointA.lng)
+    val latA = toRadians(pointA.lat)
+    val latB = toRadians(pointB.lat)
+
+    // The actual haversine formula. a and c are well known value names in the formula.
+    val a = sin(dLat / 2) * sin(dLat / 2) +
+      sin(dLng / 2) * sin(dLng / 2) * cos(latA) * cos(latB)
+    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    val distance = R * c
+
+    distance
+  }
+
+}
+
 /**
  * Geo functions.
  */
 class GeoFunctions(settings: Settings) {
+  import GeoFunctions._
 
   /**
    * Get the region for the given point.
@@ -130,58 +205,6 @@ class GeoFunctions(settings: Settings) {
       latitudeSegment(n, bbox.southWest.lat, bbox.northEast.lat, pos.position.lat) * n +
         longitudeSegment(n, bbox.southWest.lng, bbox.northEast.lng, pos.position.lng)
     }
-  }
-
-  /**
-   * Find the segment that the point lies in in the given south/north range
-   *
-   * @return A number from 0 to n - 1
-   */
-  def latitudeSegment(n: Int, south: Double, north: Double, point: Double): Int = {
-    // Normalise so that the southern most point is 0
-    val range = north - south
-    val normalisedPoint = point - south
-    val segment = Math.floor(normalisedPoint * (n / range)).asInstanceOf[Int]
-    if (segment >= n || segment < 0) {
-      // The point was never in the given range.  Default to 0.
-      0
-    } else {
-      segment
-    }
-  }
-
-  /**
-   * Find the segment that the point lies in in the given west/east range
-   *
-   * @return A number from 0 to n - 1
-   */
-  def longitudeSegment(n: Int, west: Double, east: Double, point: Double): Int = {
-    // Normalise so that the western most point is 0, taking into account the 180 cut over
-    val range = modPositive(east - west, 360)
-    val normalisedPoint = modPositive(point - west, 360)
-    val segment = Math.floor(normalisedPoint * (n / range)).asInstanceOf[Int]
-    if (segment >= n || segment < 0) {
-      // The point was never in the given range.  Default to 0.
-      0
-    } else {
-      segment
-    }
-  }
-
-  /**
-   * Modulo function that always returns a positive number
-   */
-  def modPositive(x: Double, y: Int): Double = {
-    val mod = x % y
-    if (mod > 0) mod else mod + y
-  }
-
-  /**
-   * Modulo function that always returns a positive number
-   */
-  def modPositive(x: Int, y: Int): Int = {
-    val mod = x % y
-    if (mod > 0) mod else mod + y
   }
 
 }
